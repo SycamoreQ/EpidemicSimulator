@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <option name="separateProdTestSources" value="true" />
+    <profile name="sbt 1" modules="EpidemicSimulationNew,EpidemicSimulationNew.main,EpidemicSimulationNew.test,epidemic,epidemic-ddqn-scala3,epidemic.main,epidemic.test,main,main.main,main.test,root,root.common,root.common.main,root.common.test,root.scala2,root.scala2.main,root.scala2.test" />
+    <profile name="sbt 2" modules="root.main,root.test">
+      <option name="implicitConversions" value="true" />
+      <option name="deprecationWarnings" value="true" />
+    </profile>
+    <profile name="sbt 3" modules="epidemic-ddqn-scala3.main,epidemic-ddqn-scala3.test">
+      <option name="deprecationWarnings" value="true" />
+      <option name="featureWarnings" value="true" />
+    </profile>
+  </component>
+</project>
