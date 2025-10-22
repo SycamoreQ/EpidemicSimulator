@@ -54,11 +54,14 @@ object WandB extends Logger {
 
   def flush(step: Long): Unit = {
     run.foreach { r =>
-      buf.bracketUpdate("step", PyAny.from(step.toDouble))
-      r.log(buf, step = step.toDouble) // explicit step is recommended for stable x-axis [web:321]
-      buf = Dynamic.global.dict()       // clear buffer after sending [web:347]
+      // Ensure the step is an integer for W&B's backend
+      val pyStep = PyAny.from(step) // pass as Python int, not float
+      // Do not also include "step" inside the dict; let the step arg control x-axis
+      r.log(buf, step = pyStep) // step is an int here
+      buf = Dynamic.global.dict() // clear after sending
     }
   }
+
 
   def summary(kv: Map[String, Any]): Unit = {
     run.foreach { r =>

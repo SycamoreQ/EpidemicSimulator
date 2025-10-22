@@ -16,14 +16,14 @@ final case class HyperParams(
                               rewardClip: Double = 5.0,               // clip per-step reward
                               gradClip: Double = 1.0,                 // gradient clipping (elementwise)
                               // Logging
-                              logInterval: Int = 200,                 // steps
+                              logInterval: Int = 0,                 // steps
                               emaAlpha: Double = 0.1,                 // EMA smoothing for loss
                               // Compute/memory
                               checkpoint: Boolean = true              // gradient checkpointing for MLP
                             )
 
 final case class TrainConfig(
-                              epochs: Int = 50,
-                              stepsPerEpoch: Int = 500,
+                              epochs: Int = 2,
+                              stepsPerEpoch: Int = 200,
                               evalEvery: Int = 5
                             )
