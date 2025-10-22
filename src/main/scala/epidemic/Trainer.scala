@@ -15,7 +15,7 @@ final case class TrainRow(
                            finalD: Double
                          )
 
-final class Trainer(spark: SparkSession, hp: HyperParams, cfg: TrainConfig, logger: WandB):
+final class Trainer(spark: SparkSession, hp: HyperParams, cfg: TrainConfig, logger: Logger):
 
   // Scala 3: bring Spark SQL implicits (toDS/toDF) into scope for this SparkSession
 

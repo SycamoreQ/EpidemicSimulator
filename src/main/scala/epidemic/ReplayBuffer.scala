@@ -3,6 +3,7 @@ package epidemic
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import epidemic.State._ 
 
 final case class Transition(s: State, a: Int, r: Double, s2: State, done: Boolean)
 

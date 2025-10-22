@@ -48,6 +48,10 @@ object WandB extends Logger {
     buf.bracketUpdate(tag, value)
   }
 
+  override def log(kv: Map[String, Double]): Unit = {
+    kv.foreach { case (k, v) => buf.bracketUpdate(k, PyAny.from(v)) }
+  }
+
   def flush(step: Long): Unit = {
     run.foreach { r =>
       buf.bracketUpdate("step", PyAny.from(step.toDouble))

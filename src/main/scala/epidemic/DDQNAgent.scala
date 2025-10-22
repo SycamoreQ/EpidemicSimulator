@@ -1,6 +1,10 @@
 // src/main/scala/epidemic/DDQNAgent.scala
 package epidemic
 
+import epidemic.HyperParams 
+import epidemic.MLP
+
+
 final class DDQNAgent(hp: HyperParams, stateSize: Int, actionSize: Int) {
   private val online = new MLP(stateSize, hp.hidden, actionSize, hp.lr)
   private val target = new MLP(stateSize, hp.hidden, actionSize, hp.lr)

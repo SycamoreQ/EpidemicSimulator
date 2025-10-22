@@ -36,7 +36,8 @@ final class EpidemicEnv(
                          baseGamma: Double = 0.12,
                          baseIFR: Double = 0.008,
                          noise: Double = 0.05,
-                         rewardClip: Double = 5.0         // NEW
+                         rewardClip: Double = 5.0,
+                         riskFactor: Double = 0.0
                        ) {
   private val rnd = new Random(42)
   def reset(s0: State): State = s0
@@ -85,10 +86,21 @@ final class EpidemicEnv(
       case Action.MassVax      => 0.02
     }
 
-    val rewardRaw = -50.0 * di - 400.0 * dd - 200.0 * overflow - 10.0 * actionCost
-    val clipped = math.max(-rewardClip, math.min(rewardClip, rewardRaw))
+    def npiBonus(act: Action): Double = act match {
+      case Action.Lockdown => 0.03
+      case Action.TravelBan => 0.02
+      case Action.Distancing => 0.01
+      case Action.TargetedVax => 0.01
+      case Action.MassVax => 0.02
+      case _ => 0.0
+    }
+
+    val baseReward = -50.0 * di - 400.0 * dd - 200.0 * overflow - 10.0 * actionCost
+    // amplify penalties in high-risk countries, add small NPI bonus at high risk
+    val shaped = baseReward * (1.0 + 0.75 * riskFactor) + (riskFactor * npiBonus(act))
+    val reward = math.max(-rewardClip, math.min(rewardClip, shaped))
     val done = (next.t >= next.tMax) || (next.i / Nnext < 1e-5) || (next.d / Nnext > 0.02)
-    (next, clipped, done)
+    (next, reward, done)
   }
 }
 
