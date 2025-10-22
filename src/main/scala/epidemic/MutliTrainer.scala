@@ -1,4 +1,3 @@
-// src/main/scala/epidemic/MultiTrainerToy.scala
 package epidemic
 
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -24,7 +23,7 @@ final class MultiTrainerToy(
 
   // Throttles
   private val logEvery   = math.max(50, hp.logInterval) // batch metrics every 50 steps
-  private val learnEvery = 4                             // (learn cadence is enforced in WorldToy)
+  private val learnEvery = 4                             
 
   def run(): DataFrame = {
     val rows = scala.collection.mutable.ArrayBuffer[RowToy]()
@@ -33,7 +32,7 @@ final class MultiTrainerToy(
     for (ep <- 1 to cfg.epochs) {
       var t = 0
       while (t < cfg.stepsPerEpoch) {
-        val batch = world.stepOne(cfg.stepsPerEpoch) // WorldToy handles act/observe/learn cadence
+        val batch = world.stepOne(cfg.stepsPerEpoch) 
 
         // Collect rows for Spark table
         batch.foreach { case (name, s2, r) =>
@@ -42,7 +41,7 @@ final class MultiTrainerToy(
           rows += RowToy(ep, step, name, r, s2.s, s2.i, s2.r, s2.d, s2.v, eps)
         }
 
-        // Batch W&B metrics every N steps (single flush)
+        // Batch W&B metrics every N steps
         if (step % logEvery == 0) {
           val byC: Map[String, Double] =
             batch.groupBy(_._1).view.mapValues(_.map(_._3).sum).toMap

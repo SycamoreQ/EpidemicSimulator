@@ -26,7 +26,6 @@ final class WorldToy(
   private var gStep: Long = 0L
   private val learnEvery = 4
 
-  // Initial global population for drift checks
   private val worldPop0: Long = ToyConn.C.map(_.pop.toLong).sum
 
   val nodes: Vector[Node] = ToyConn.C.zipWithIndex.map { case (cfg, i) =>
@@ -39,7 +38,6 @@ final class WorldToy(
     Node(i, cfg.name, cfg.pop, env, agent, s0)
   }.toVector
 
-  // Largest-remainder proportional allocator for exact integer totals
   private def allocateInt(total: Int, weights: Array[Double]): Array[Int] = {
     val sumW = weights.sum
     if (total <= 0 || sumW <= 0.0) return Array.fill(weights.length)(0)
@@ -59,20 +57,28 @@ final class WorldToy(
   def stepOne(tMax: Int): Vector[(String, State, Double)] = {
     val local = Array.ofDim[(State, Double, Boolean)](nodes.size)
 
-    // Local (within-country) step with per-country invariants
     var i = 0
     while (i < nodes.size) {
       val n = nodes(i)
       val a = n.agent.act(n.s)
+
+      // capture this country's total before local update
+      val tb = math.round(n.s.s + n.s.i + n.s.r + n.s.d + n.s.v).toLong
+
       val (s2, r, done) = n.env.step(n.s, Action.fromId(a))
-      if (validate) assertState(s2, Invariants(n.pop, tMax)) // per-country check before mobility [web:534]
+
+      if (validate) {
+        val ta = math.round(s2.s + s2.i + s2.r + s2.d + s2.v).toLong
+        require(ta == tb, s"mass not conserved (local): $ta != $tb for ${n.name} at t=${n.s.t}")
+      }
+
       n.agent.observe(Transition(n.s, a, r, s2, done))
       if (gStep % learnEvery == 0) n.agent.learn(hp.batchSize, gradAccumSteps = 4)
       local(i) = (s2, r, done)
       i += 1
     }
 
-    // Global total after local
+
     val totalAfterLocal: Long =
       if (validate) local.view.map(_._1).map(sumState).sum else 0L
 

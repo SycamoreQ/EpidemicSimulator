@@ -1,4 +1,3 @@
-// src/main/scala/epidemic/MLP.scala
 package epidemic
 import scala.util.Random
 

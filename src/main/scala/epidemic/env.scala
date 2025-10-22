@@ -1,4 +1,3 @@
-// src/main/scala/epidemic/Env.scala
 package epidemic
 
 import scala.util.Random
@@ -39,10 +38,9 @@ final class EpidemicEnv(
                        ) {
   private val rnd = new Random(42)
   def reset(s0: State): State = s0
-
-  // Helpers for integer-conserving allocations
-  private def clamp01(x: Double): Double = math.max(0.0, math.min(1.0, x)) // keeps probabilities valid [web:534]
-  private def allocateInt(total: Int, weights: Array[Double]): Array[Int] = { // largest-remainder apportionment [web:547]
+  
+  private def clamp01(x: Double): Double = math.max(0.0, math.min(1.0, x))
+  private def allocateInt(total: Int, weights: Array[Double]): Array[Int] = {
     val sumW = weights.sum
     if (total <= 0 || sumW <= 0.0) return Array.fill(weights.length)(0)
     val raw  = weights.map(w => (w / sumW) * total)
@@ -56,70 +54,67 @@ final class EpidemicEnv(
   }
 
   def step(st: State, act: Action): (State, Double, Boolean) = {
-    // Copy state and parameters
     var beta = baseBeta; var gamma = baseGamma; var ifr = baseIFR; var cap = st.hospCap
-    var s = st.s; var i = st.i; var r = st.r; var d = st.d; var v = st.v
-
-    // Action effects (same structure as before)
     act match {
       case Action.Distancing  => beta *= 0.75
       case Action.TravelBan   => beta *= 0.65
       case Action.Lockdown    => beta *= 0.35
       case Action.SurgeCare   => cap  *= 1.6; gamma *= 1.3
-      case Action.TargetedVax =>
-      // Vaccination will be handled via integer allocation below; keep as rate only
-      case Action.MassVax     =>
-      // Vaccination handled via rate below as well
-      case _ =>
+      case _ => ()
     }
 
-    // Rates and stochasticity
-    val Npop = math.max(1.0, s + i + r) // exclude d from mixing pool as before [web:534]
+    val s0 = math.max(0, math.round(st.s).toInt)
+    val i0 = math.max(0, math.round(st.i).toInt)
+    val r0 = math.max(0, math.round(st.r).toInt)
+    val d0 = math.max(0, math.round(st.d).toInt)
+    val v0 = math.max(0, math.round(st.v).toInt)
+    val pop0 = s0 + i0 + r0 + d0 + v0
+    
+    val mix = math.max(1.0, s0 + i0 + r0) 
     val stoch = 1.0 + noise * (rnd.nextGaussian())
+    val effBeta  = clamp01(beta  * stoch)
+    val effGamma = clamp01(gamma * stoch)
+    val effIFR   = clamp01((if (i0 > cap) ifr * 4.0 else ifr) * stoch)
 
-    // Effective rates with simple NPI-dependent multipliers
-    val effBeta = clamp01(beta * stoch)                             // effective infection contact rate [web:534]
-    val effGamma = clamp01(gamma * stoch)                           // effective recovery rate [web:534]
-    val effIFR = if (i > cap) clamp01(ifr * 4.0 * stoch) else clamp01(ifr * stoch) // overflow raises IFR [web:534]
-
-    // Vaccination rates from actions as probabilities per step
     val vaxRate = act match {
       case Action.TargetedVax => 0.02
       case Action.MassVax     => 0.05
       case _                  => 0.0
     }
 
-    // Integer-conserving splits
-
-    // S split: stay vs infect vs vaccinate; weights must sum to <= 1, remainder is "stay" [web:534]
-    val pInf = clamp01(effBeta * (if (Npop > 0) i / Npop else 0.0))
+    // Integer-conserving splits for S and I
+    val pInf = clamp01(effBeta * (if (mix > 0) i0.toDouble / mix else 0.0))
     val pVax = clamp01(vaxRate)
-    val wS0  = math.max(0.0, 1.0 - pInf - pVax) // stay share
-    val sInt = math.max(0, math.round(s).toInt) // integer source from S
-    val sAlloc = allocateInt(sInt, Array(wS0, pInf, pVax)) // [stay, infect, vax] [web:547]
+    val wS0  = math.max(0.0, 1.0 - pInf - pVax)
+    val sAlloc = allocateInt(s0, Array(wS0, pInf, pVax)) // [stay, infect, vax]
     val sStay = sAlloc(0); val sInf = sAlloc(1); val sVax = sAlloc(2)
 
-    // I split: stay vs recover vs die [web:534]
     val pRec = clamp01(effGamma)
     val pDie = clamp01(effIFR)
-    val wI0  = math.max(0.0, 1.0 - pRec - pDie) // stay share
-    val iInt = math.max(0, math.round(i).toInt)
-    val iAlloc = allocateInt(iInt, Array(wI0, pRec, pDie)) // [stay, recover, die] [web:547]
+    val wI0  = math.max(0.0, 1.0 - pRec - pDie)
+    val iAlloc = allocateInt(i0, Array(wI0, pRec, pDie)) // [stay, recover, die]
     val iStay = iAlloc(0); val rec = iAlloc(1); val die = iAlloc(2)
 
-    // Apply exact integer updates; keep state as Double but values are integers
-    val sNext = sInt - sInf - sVax
-    val iNext = iStay + sInf
-    val rNext = math.round(r).toInt + rec
-    val dNext = math.round(d).toInt + die
-    val vNext = math.round(v).toInt + sVax
+    // Provisional next counts (integers)
+    var sN = s0 - sInf - sVax
+    var iN = iStay + sInf
+    var rN = r0 + rec
+    var dN = d0 + die
+    var vN = v0 + sVax
 
+    // Residual correction to enforce exact conservation per country 
+    val sumN = sN + iN + rN + dN + vN
+    val resid = pop0 - sumN
+    if (resid != 0) {
+      sN = math.max(0, sN + resid)
+    }
+
+    // Build next state as Doubles for compatibility
     val next = st.copy(
-      s = sNext.toDouble, i = iNext.toDouble, r = rNext.toDouble,
-      d = dNext.toDouble, v = vNext.toDouble, hospCap = cap, t = st.t + 1
+      s = sN.toDouble, i = iN.toDouble, r = rN.toDouble,
+      d = dN.toDouble, v = vN.toDouble, hospCap = cap, t = st.t + 1
     )
-
-    // Reward and termination (unchanged structure)
+    
     val Nnext = math.max(1.0, next.n)
     val di = (next.i - st.i) / Nnext
     val dd = (next.d - st.d) / Nnext

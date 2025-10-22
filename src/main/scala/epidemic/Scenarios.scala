@@ -4,8 +4,7 @@ package epidemic
 object Scenarios {
   private def clone2D(a: Array[Array[Double]]) =
     a.map(_.clone())
-
-  // Only one directed link enabled; everything else 0 . Helps in validating if a specific link will only update and rest does not
+  
   def oneHop(base: Array[Array[Double]], from: Int, to: Int): Array[Array[Double]] = {
     val W = clone2D(base)
     for (i <- W.indices; j <- W(i).indices) W(i)(j) = 0.0

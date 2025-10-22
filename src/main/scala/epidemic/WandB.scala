@@ -8,8 +8,7 @@ object WandB extends Logger {
   private val wandb = py.module("wandb")
   private var run: Option[py.Dynamic] = None
   private var buf: py.Dynamic = Dynamic.global.dict()
-
-  // Convert Scala -> Python safely; no AnyRef fallback
+  
   private def toPy(x: Any): py.Any = x match {
     case v: py.Any      => v
     case v: py.Dynamic  => v.asInstanceOf[py.Any]
@@ -18,7 +17,7 @@ object WandB extends Logger {
     case d: Double      => PyAny.from(d)
     case f: Float       => PyAny.from(f.toDouble)
     case i: Int         => PyAny.from(i)
-    case l: Long        => PyAny.from(l.toDouble)   // W&B treats numbers as floats
+    case l: Long        => PyAny.from(l.toDouble)   
     case b: Boolean     => PyAny.from(b)
     case s: String      => PyAny.from(s)
     case m: Map[?, ?] =>
@@ -30,7 +29,6 @@ object WandB extends Logger {
       seq.asInstanceOf[Seq[Any]].foreach(v => lst.append(toPy(v)))
       lst.asInstanceOf[py.Any]
     case other =>
-      // last-resort: stringify or throw; avoid Any.from(Object)
       PyAny.from(other.toString)
   }
 
@@ -54,11 +52,9 @@ object WandB extends Logger {
 
   def flush(step: Long): Unit = {
     run.foreach { r =>
-      // Ensure the step is an integer for W&B's backend
-      val pyStep = PyAny.from(step) // pass as Python int, not float
-      // Do not also include "step" inside the dict; let the step arg control x-axis
-      r.log(buf, step = pyStep) // step is an int here
-      buf = Dynamic.global.dict() // clear after sending
+      val pyStep = PyAny.from(step) 
+      r.log(buf, step = pyStep) 
+      buf = Dynamic.global.dict() 
     }
   }
 
@@ -70,5 +66,5 @@ object WandB extends Logger {
     }
   }
 
-  def finish(): Unit = run.foreach(_.finish()) // close the run [web:345]
+  def finish(): Unit = run.foreach(_.finish()) 
 }

@@ -4,7 +4,6 @@ package epidemic
 final case class CountryCfg(name: String, pop: Int)
 
 object ToyConn {
-  // Countries in fixed order
   val C: Vector[CountryCfg] = Vector(
     CountryCfg("China",   1_000_000),
     CountryCfg("Japan",     120_000),
@@ -31,8 +30,7 @@ object ToyConn {
     // USA
     Array(0.002, 0.002, 0.002, 0.002, 0.002, 0.0)
   )
-
-  // Basic sanity: clamp negatives and ensure diagonal = 0
+  
   for (i <- W.indices) {
     for (j <- W(i).indices) W(i)(j) = math.max(0.0, if (i==j) 0.0 else W(i)(j))
   }
