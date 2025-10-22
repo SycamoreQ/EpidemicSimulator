@@ -1,0 +1,7 @@
+package epidemic
+
+
+class RewardModel {
+
+}
+
