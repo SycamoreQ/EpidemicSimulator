@@ -1,29 +1,27 @@
 package epidemic
 
 final case class HyperParams(
-                              gamma: Double = 0.97,
-                              lr: Double = 5e-4,
+                              gamma: Double = 0.99,
+                              lr: Double = 1e-3,
                               epsilonStart: Double = 1.0,
-                              epsilonEnd: Double = 0.05,
-                              epsilonDecaySteps: Int = 200_000,       // slower decay for better exploration
-                              targetUpdateEvery: Int = 3_000,         // hard-copy period (if no softTau)
-                              softTau: Option[Double] = Some(0.005),  // soft target update per step if defined
-                              replayCapacity: Int = 500_000,
+                              epsilonEnd: Double = 0.1,          // 0.05 for longer runs
+                              epsilonDecaySteps: Int = 5000,     // slow down/raise for longer runs
+                              targetUpdateEvery: Int = 1500,
+                              softTau: Option[Double] = None,
+                              replayCapacity: Int = 50000,
                               batchSize: Int = 64,
                               hidden: Int = 128,
-                              // Stabilizers
-                              clipQ: Double = 50.0,                   // clamp Q and targets to [-clipQ, clipQ]
-                              rewardClip: Double = 5.0,               // clip per-step reward
-                              gradClip: Double = 1.0,                 // gradient clipping (elementwise)
-                              // Logging
-                              logInterval: Int = 0,                 // steps
-                              emaAlpha: Double = 0.1,                 // EMA smoothing for loss
-                              // Compute/memory
-                              checkpoint: Boolean = true              // gradient checkpointing for MLP
+                              clipQ: Double = 10.0,
+                              rewardClip: Double = 5.0,
+                              gradClip: Double = 1.0,
+                              logInterval: Int = 500,
+                              emaAlpha: Double = 0.0,
+                              checkpoint: Boolean = true,
+                              learnEvery: Int = 8                 // update cadence
                             )
 
 final case class TrainConfig(
-                              epochs: Int = 2,
-                              stepsPerEpoch: Int = 200,
-                              evalEvery: Int = 5
+                              epochs: Int = 20,
+                              stepsPerEpoch: Int = 800,
+                              evalEvery: Int = 2
                             )

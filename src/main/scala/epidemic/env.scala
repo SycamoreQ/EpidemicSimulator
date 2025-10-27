@@ -40,18 +40,9 @@ final class EpidemicEnv(
   def reset(s0: State): State = s0
   
   private def clamp01(x: Double): Double = math.max(0.0, math.min(1.0, x))
-  private def allocateInt(total: Int, weights: Array[Double]): Array[Int] = {
-    val sumW = weights.sum
-    if (total <= 0 || sumW <= 0.0) return Array.fill(weights.length)(0)
-    val raw  = weights.map(w => (w / sumW) * total)
-    val base = raw.map(math.floor(_).toInt)
-    var rem  = total - base.sum
-    val frac = raw.zipWithIndex.map { case (x, j) => (x - math.floor(x), j) }
-    scala.util.Sorting.stableSort(frac)(Ordering.by[(Double, Int), Double](_._1).reverse)
-    var k = 0
-    while (rem > 0 && k < frac.length) { base(frac(k)._2) += 1; rem -= 1; k += 1 }
-    base
-  }
+
+  @inline private def allocateInt(total: Int, weights: Array[Double]): Array[Int] =
+    EpidemicEnv.allocateInt(total, weights)
 
   def step(st: State, act: Action): (State, Double, Boolean) = {
     var beta = baseBeta; var gamma = baseGamma; var ifr = baseIFR; var cap = st.hospCap
@@ -145,5 +136,22 @@ final class EpidemicEnv(
     val reward = math.max(-rewardClip, math.min(rewardClip, shaped))
     val done = (next.t >= next.tMax) || (next.i / Nnext < 1e-5) || (next.d / Nnext > 0.02)
     (next, reward, done)
+  }
+}
+
+object EpidemicEnv {
+  def allocateInt(total: Int, weights: Array[Double]): Array[Int] = {
+    val sumW = weights.sum
+    if (total <= 0 || sumW <= 0.0) return Array.fill(weights.length)(0)
+    val raw = weights.map(w => (w / sumW) * total)
+    val base = raw.map(math.floor(_).toInt)
+    var rem = total - base.sum
+    val frac = raw.zipWithIndex.map { case (x, j) => (x - math.floor(x), j) }
+    scala.util.Sorting.stableSort(frac)(Ordering.by[(Double, Int), Double](_._1).reverse)
+    var k = 0
+    while (rem > 0 && k < frac.length) {
+      base(frac(k)._2) += 1; rem -= 1; k += 1
+    }
+    base
   }
 }
