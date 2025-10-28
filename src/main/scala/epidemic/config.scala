@@ -4,8 +4,8 @@ final case class HyperParams(
                               gamma: Double = 0.99,
                               lr: Double = 1e-3,
                               epsilonStart: Double = 1.0,
-                              epsilonEnd: Double = 0.1,          // 0.05 for longer runs
-                              epsilonDecaySteps: Int = 5000,     // slow down/raise for longer runs
+                              epsilonEnd: Double = 0.1,
+                              epsilonDecaySteps: Int = 15000,
                               targetUpdateEvery: Int = 1500,
                               softTau: Option[Double] = None,
                               replayCapacity: Int = 50000,
@@ -17,11 +17,11 @@ final case class HyperParams(
                               logInterval: Int = 500,
                               emaAlpha: Double = 0.0,
                               checkpoint: Boolean = true,
-                              learnEvery: Int = 8                 // update cadence
+                              learnEvery: Int = 8
                             )
 
 final case class TrainConfig(
                               epochs: Int = 20,
-                              stepsPerEpoch: Int = 800,
+                              stepsPerEpoch: Int = 1200,
                               evalEvery: Int = 2
                             )

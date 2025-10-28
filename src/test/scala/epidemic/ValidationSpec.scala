@@ -1,23 +1,23 @@
 package epidemic
 
-import munit.FunSuite
-import Validation._
+import org.scalatest.funsuite.AnyFunSuite
 
-class ValidationSpec extends FunSuite {
+final class ValidationSpec extends AnyFunSuite {
+
   test("assertState enforces mass conservation and time bounds") {
-    val s = State(9, 1, 0, 0, 0, hospCap = 10, t = 0, tMax = 10, seed = 1)
-    assertNoDiff("", "") // no-op to satisfy munit
-    assertNoException(assertState(s, Invariants(pop = 10, tMax = 10)))
+    val s = State(s = 9, i = 1, r = 0, d = 0, v = 0, hospCap = 10, t = 0, tMax = 10, seed = 1)
+    // Should run without throwing for valid invariants
+    Validation.assertState(s, Validation.Invariants(pop = 10, tMax = 10))
+    assert(true)
   }
 
   test("arrivalTime returns series length when threshold never reached") {
-    val at = arrivalTime(Seq.fill(5)(1.0), thresh = 10.0)
-    assertEquals(at, 5)
+    val at = Validation.arrivalTime(Seq(1.0, 2.0, 3.0, 4.0, 5.0), thresh = 10.0)
+    assert(at == 5)
   }
 
   test("peakI returns max or zero for empty series") {
-    assertEquals(peakI(Seq.empty[Double]), 0.0)
-    assertEquals(peakI(Seq(0.1, 0.5, 0.3)), 0.5)
+    assert(Validation.peakI(Seq.empty[Double]) == 0.0)
+    assert(math.abs(Validation.peakI(Seq(0.1, 0.5, 0.3)) - 0.5) <= 1e-12)
   }
 }
- 

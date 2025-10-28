@@ -1,19 +1,36 @@
 package epidemic
-import munit.FunSuite
 
-class ReplayBufferSpec extends FunSuite {
-  test("ring overwrite and size") {
-    val rb = new ReplayBuffer(4)
-    val s = State(10,0,0,0,0,10,0,10,1)
-    (0 until 6).foreach { k => rb.push(Transition(s.copy(t=k), 0, k, s.copy(t=k+1), false)) }
-    assertEquals(rb.size, 4)
+import org.scalatest.funsuite.AnyFunSuite
+
+final class ReplayBufferSpec extends AnyFunSuite {
+
+  private def mkState(i: Int): State =
+    State(s = 1000 - i, i = i.toDouble, r = 0.0, d = 0.0, v = 0.0, hospCap = 100.0, t = i, tMax = 999, seed = 1)
+
+  private def tr(i: Int): Transition =
+    Transition(s = mkState(i), a = i % 3, r = i.toDouble, s2 = mkState(i + 1), done = false)
+
+  test("deterministic sample across identical buffers (same RNG seed, same contents)") {
+    val cap = 16
+    val n   = 12
+    val a = new ReplayBuffer(capacity = cap)
+    val b = new ReplayBuffer(capacity = cap)
+    (0 until cap).foreach { i => a.push(tr(i)); b.push(tr(i)) }
+
+    val sampA = a.sample(n).map(t => (t.a, t.s.i)).toVector
+    val sampB = b.sample(n).map(t => (t.a, t.s.i)).toVector
+
+    assert(sampA == sampB)  // same Random(123) and same buffer contents
   }
-  test("deterministic sample with fixed seed") {
-    val rb = new ReplayBuffer(10)
-    val s = State(10,0,0,0,0,10,0,10,1)
-    (0 until 10).foreach { k => rb.push(Transition(s.copy(t=k), 0, 0.0, s.copy(t=k+1), false)) }
-    val a = rb.sample(5).map(_.t).toSeq
-    val b = rb.sample(5).map(_.t).toSeq
-    assertEquals(a, b)
+
+  test("ring buffer overwrites older entries and size stays at capacity") {
+    val cap = 4
+    val rb  = new ReplayBuffer(capacity = cap)
+    (0 until 8).foreach(i => rb.push(tr(i)))      // push twice the capacity
+    assert(rb.size == cap)
+
+    val got = rb.sample(cap).map(_.s.i.toInt).toSet // sampling cap elements returns all stored entries
+    val expect = Set(4, 5, 6, 7)                    // last cap items should remain after overwrite
+    assert(got == expect)
   }
 }
