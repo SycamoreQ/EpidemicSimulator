@@ -47,7 +47,7 @@ import Geo.Country
     )
 
   // Connectivity
-  val W2 = ToyConn.W2   // defined in your ToyConn; if absent, use ToyConn.W
+  val W2 = ToyConn.W2   
 
   // Init W&B
   WandB.init(

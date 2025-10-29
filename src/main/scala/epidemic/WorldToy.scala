@@ -4,7 +4,6 @@ import scala.util.Random
 import scala.collection.parallel.CollectionConverters._
 import epidemic.Validation.*
 import epidemic.{Action, State, EpidemicEnv, DDQNAgent}
-// Shared integer allocator exposed from EpidemicEnv companion
 import epidemic.EpidemicEnv.allocateInt
 import Geo.*
 
@@ -72,7 +71,7 @@ final class WorldToy(
     val work = if (parallelism > 1) parNodes else nodes
 
     work.map { n =>
-      val a = n.agent.act(n.s) // epsilon-greedy with schedule
+      val a = n.agent.act(n.s) 
       val tb = sumState(n.s)
       val (s2, r, done) = n.env.step(n.s, Action.fromId(a))
       n.lastA = a

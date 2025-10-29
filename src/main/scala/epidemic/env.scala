@@ -99,8 +99,7 @@ final class EpidemicEnv(
     if (resid != 0) {
       sN = math.max(0, sN + resid)
     }
-
-    // Build next state as Doubles for compatibility
+    
     val next = st.copy(
       s = sN.toDouble, i = iN.toDouble, r = rN.toDouble,
       d = dN.toDouble, v = vN.toDouble, hospCap = cap, t = st.t + 1

@@ -45,17 +45,15 @@ object ToyConn {
       W(i)(i) = 0.0
     W
   }
-
-  // Define W first
+  
   val W: Array[Array[Double]] = gravityMatrix(C)
-
-  // Then derive W2
+  
   def scaleEdge(W: Array[Array[Double]], src: Int, dst: Int, factor: Double): Array[Array[Double]] = {
     val A = W.map(_.clone())
     A(src)(dst) *= factor
     A
   }
-  val W2: Array[Array[Double]] = scaleEdge(W, src = 5 /* China */, dst = 3 /* India idx depends on your ordering */, factor = 3.0)
+  val W2: Array[Array[Double]] = scaleEdge(W, src = 5 /* China idx */, dst = 3 /* India idx */, factor = 3.0)
 
   // Utility: scale a specific source row (e.g., to simulate travel policy at a hub)
   def scaleRow(W: Array[Array[Double]], row: Int, factor: Double): Array[Array[Double]] = {

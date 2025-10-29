@@ -6,7 +6,7 @@ object Geo {
                             pop: Int,
                             lat: Double,
                             lon: Double,
-                            hospPer1k: Double = 3.0,   // hospital beds per 1k people (toy)
+                            hospPer1k: Double = 3.0,   // hospital beds per 1k people 
                             betaMul: Double = 1.0,     // per-country transmissibility multiplier
                             ifrMul: Double = 1.0,      // infection fatality multiplier
                             noise: Double = 0.05       // env stochasticity

@@ -18,7 +18,7 @@ final class DDQNAgent(hp: HyperParams, stateSize: Int, actionSize: Int) {
     hp.epsilonStart + (hp.epsilonEnd - hp.epsilonStart) * frac
   }
 
-  // Greedy action (no exploration, no step increment)
+  // Greedy action
   def actGreedy(s: State): Int =
     online.predict(s.features, clamp = hp.clipQ).zipWithIndex.maxBy(_._1)._2
 
@@ -58,7 +58,7 @@ final class DDQNAgent(hp: HyperParams, stateSize: Int, actionSize: Int) {
     val loss  = online.trainBatch(xs, tgts, hp.gradClip, clamp = hp.clipQ)
 
     hp.softTau match {
-      case Some(tau) => target.copyFrom(online)            // replace with soft update if available
+      case Some(tau) => target.copyFrom(online)            
       case None      => if (steps % hp.targetUpdateEvery == 0) target.copyFrom(online)
     }
     emaLoss = if (emaLoss == 0.0) loss else hp.emaAlpha * loss + (1 - hp.emaAlpha) * emaLoss

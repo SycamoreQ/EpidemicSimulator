@@ -60,8 +60,7 @@ final class MultiTrainerToy(
             Map("toy_eps_mean" -> epsMean, "loss_ema" -> lossEma))
           logger.logScalar("toy_eps_mean", epsMean, step)
           WandB.flush(step.toLong)
-
-          // snapshot for streaming UI
+          
           Snapshots.writeEpochSnapshot(spark, world, step, lossSum, "stream_in/snapshots")
         }
 
@@ -102,8 +101,7 @@ final class MultiTrainerToy(
       }
     }
       
-
-    // Materialize analytics table
+    
     val df = spark.createDataset(rows.toSeq).toDF
     df.groupBy("epoch","country")
       .agg(

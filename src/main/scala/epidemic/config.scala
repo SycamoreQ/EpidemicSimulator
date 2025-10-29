@@ -22,6 +22,6 @@ final case class HyperParams(
 
 final case class TrainConfig(
                               epochs: Int = 20,
-                              stepsPerEpoch: Int = 1200,
+                              stepsPerEpoch: Int = 5000,
                               evalEvery: Int = 2
                             )

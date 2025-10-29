@@ -1,7 +1,7 @@
 package epidemic
 
 object Mobility {
-  // Gravity + air proxy; tune exponents/gamma
+  // Gravity + air proxy; need to tune exponents/gamma
   def gravityAir(
                   ci: CountryConfig,
                   cj: CountryConfig,
