@@ -6,6 +6,7 @@ import epidemic.Validation.*
 import epidemic.{Action, State, EpidemicEnv, DDQNAgent}
 import epidemic.EpidemicEnv.allocateInt
 import Geo.*
+import Geo.CountryProfiles
 
 final class WorldToy(
                       hp: HyperParams,
@@ -14,9 +15,10 @@ final class WorldToy(
                       rng: Random = new Random(7),
                       conn: Array[Array[Double]] = ToyConn.W,
                       makeEnv: () => EpidemicEnv = () => new EpidemicEnv(),
-                      makeEnvFor: Option[Country => EpidemicEnv] = None,
+                      makeEnvFor: Option[(String, Int) => EpidemicEnv] = None,
                       validate: Boolean = false,
-                      parallelism: Int = Runtime.getRuntime.availableProcessors()
+                      parallelism: Int = Runtime.getRuntime.availableProcessors(),
+                      countryHyperParams: Map[String, HyperParams] = Map.empty  // NEW: Country-specific hyperparams
                     ) {
 
   private var gStep: Long = 0L
@@ -35,16 +37,32 @@ final class WorldToy(
                          pop: Int,
                          env: EpidemicEnv,
                          agent: DDQNAgent,
+                         hyperParams: HyperParams,  // NEW: Store country-specific hyperparams
                          var s: State,
-                         var lastA: Int = 0
+                         var lastA: Int = 0,
+                         var lastLearnStep: Long = 0L  // NEW: Track when this country last learned
                        )
 
   val nodes: Vector[Node] = ToyConn.C.zipWithIndex.map { case (cfg, i) =>
-    val env = makeEnvFor.map(f => f(cfg)).getOrElse(makeEnv())
-    val agent = new DDQNAgent(hp, stateSize = 7, actionSize = Action.values.length)
+    val env = makeEnvFor.map(f => f(cfg.name, cfg.pop)).getOrElse(makeEnv())
+
+    // Use country-specific hyperparameters - FIXED
+    val countryHp = countryHyperParams.getOrElse(cfg.name, hp)
+    val agent = new DDQNAgent(countryHp, stateSize = 7, actionSize = Action.values.length)
     val s0 = initStates(i)
+
     if (validate) assertState(s0, Invariants(cfg.pop, base.tMax))
-    Node(i, cfg.name, cfg.pop, env, agent, s0, 0)
+    
+    val envParams = env.params
+    val r0 = if (envParams.gamma > 0) envParams.beta / envParams.gamma else 0.0
+    WandB.log(Map(
+      s"env_beta_${cfg.name}" -> envParams.beta,
+      s"env_ifr_${cfg.name}" -> envParams.ifr,
+      s"env_noise_${cfg.name}" -> envParams.noise,
+      s"env_R0_${cfg.name}" -> r0
+    ))
+
+    Node(i, cfg.name, cfg.pop, env, agent, countryHp, s0, 0, 0L)
   }.toVector
 
   private lazy val parNodes = {
@@ -56,22 +74,19 @@ final class WorldToy(
   }
 
   def snapshotStates(): Vector[State] = nodes.map(_.s)
-
   def restoreStates(ss: Vector[State]): Unit = nodes.zip(ss).foreach { case (n, s) => n.s = s }
-
   def resetToInitial(): Unit = nodes.indices.foreach(i => nodes(i).s = initStates(i))
-
 
   private inline def sumState(st: State): Long =
     math.round(st.s + st.i + st.r + st.d + st.v).toLong
 
-  // Training step: uses epsilon-greedy, writes replay, and learns on cadence
+  // Asynchronous learning with country-specific schedules
   def stepOne(tMax: Int): Vector[(String, State, Double)] = {
     val local = Array.ofDim[(State, Double, Boolean)](nodes.size)
     val work = if (parallelism > 1) parNodes else nodes
 
     work.map { n =>
-      val a = n.agent.act(n.s) 
+      val a = n.agent.act(n.s)
       val tb = sumState(n.s)
       val (s2, r, done) = n.env.step(n.s, Action.fromId(a))
       n.lastA = a
@@ -132,17 +147,31 @@ final class WorldToy(
     }
 
     gStep += 1
-    if (gStep % learnEvery == 0) {
-      val bs = hp.batchSize
-      // Warm-up: learn only after some replay is filled
-      nodes.foreach { n =>
-        if (n.agent.replaySize >= bs * 4) n.agent.learn(bs, 1)
+
+    // ASYNCHRONOUS LEARNING: Each country learns on its own schedule
+    nodes.foreach { n =>
+      val countryLearnEvery = n.hyperParams.learnEvery
+      val stepsSinceLastLearn = gStep - n.lastLearnStep
+
+      if (stepsSinceLastLearn >= countryLearnEvery) {
+        val bs = n.hyperParams.batchSize
+        if (n.agent.replaySize >= bs * 4) {
+          val learningIntensity = n.name match {
+            case "India" => 2    // Learn more aggressively (poor healthcare needs quick adaptation)
+            case "Japan" => 1    // Learn conservatively (good healthcare, methodical)
+            case "Germany" => 1  // Systematic learning
+            case _ => 1          // Default
+          }
+          n.agent.learn(bs, learningIntensity)
+          n.lastLearnStep = gStep
+        }
       }
     }
+
     out.result()
   }
 
-  // Greedy evaluation step: no replay writes and no learning
+  // Greedy evaluation step
   def stepOneGreedy(tMax: Int): Vector[(String, State, Double)] = {
     val local = Array.ofDim[(State, Double, Boolean)](nodes.size)
     val work = if (parallelism > 1) parNodes else nodes
@@ -159,7 +188,7 @@ final class WorldToy(
       n.s -> ((s2, r, done))
     }.toVector.zipWithIndex.foreach { case ((_, tup), i) =>
       val (s2, r, done) = tup
-      local(i) = (s2, r, done) // no observe during eval
+      local(i) = (s2, r, done)
     }
 
     val totalAfterLocal: Long =

@@ -15,8 +15,7 @@ object Calibrate {
     val n = x.size.toDouble
     math.sqrt(x.map(v => v*v).sum / math.max(1.0, n))
   }
-
-  // Roll out one (beta, travelScale) setting and return per-country metrics
+  
   private def rollout(
                        hp: HyperParams,
                        cfg: TrainConfig,
@@ -27,39 +26,44 @@ object Calibrate {
                        validate: Boolean,
                        heterogeneous: Boolean
                      ): Map[String, Metrics] = {
-    // Scale outbound travel from the seeded country
     val Wscaled = ToyConn.scaleRow(ToyConn.W, row = seedIdx, factor = travelScale)
+    
+    val makeEnvHomogeneous: () => EpidemicEnv =
+      () => new EpidemicEnv(baseBeta = beta, baseGamma = 0.12, baseIFR = 0.008, noise = 0.05, rewardClip = hp.rewardClip, seed = 7)
+    
+    val makeEnvForHeterogeneous: (String, Int) => EpidemicEnv = { (name, pop) =>
+      val profile = Geo.CountryProfiles.getProfile(name)
+      val countrySeed = ToyConn.C.indexWhere(_.name == name) + 42
+      
+      val finalBeta = beta * (1.0 + (profile.populationDensity / 1000.0) * 0.5) * (3.0 - profile.healthcareCapacity * 2.0)
+      val finalIFR = 0.008 * (1.0 + profile.ageDistributionElderly * 2.0)
+      val finalNoise = 0.05 * (1.0 + (1.0 - profile.economicResilience))
 
-    // Homogeneous fallback env
-    val makeEnv: () => EpidemicEnv =
-      () => new EpidemicEnv(baseBeta = beta, baseGamma = 0.12, baseIFR = 0.008, noise = 0.05, rewardClip = hp.rewardClip)
-
-    // Optional heterogeneous per-country env
-    val makeEnvForOpt: Option[Country => EpidemicEnv] =
-      if (heterogeneous)
-        Some((c: Country) =>
-          new EpidemicEnv(
-            baseBeta   = beta * c.betaMul,
-            baseGamma  = 0.12,
-            baseIFR    = 0.008 * c.ifrMul,
-            noise      = c.noise,
-            rewardClip = hp.rewardClip
-          )
-        )
-      else None
+      new EpidemicEnv(
+        baseBeta = finalBeta,
+        baseGamma = 0.12,
+        baseIFR = finalIFR,
+        noise = finalNoise,
+        rewardClip = hp.rewardClip,
+        countryName = name,
+        seed = countrySeed 
+      )
+    }
+    
+    val makeEnvForOpt: Option[(String, Int) => EpidemicEnv] =
+      if (heterogeneous) Some(makeEnvForHeterogeneous) else None
 
     val world = new WorldToy(
-      hp         = hp,
-      base       = base,
-      seedIdx    = seedIdx,
-      rng        = new Random(123),
-      conn       = Wscaled,
-      makeEnv    = makeEnv,
-      makeEnvFor = makeEnvForOpt,
-      validate   = validate
+      hp = hp,
+      base = base,
+      seedIdx = seedIdx,
+      rng = new scala.util.Random(7),
+      conn = Wscaled,
+      makeEnv = makeEnvHomogeneous, 
+      makeEnvFor = makeEnvForOpt,  
+      validate = true
     )
 
-    // Collect I(t) series for each country
     val series = ToyConn.C.map(_.name).map(_ -> scala.collection.mutable.ArrayBuffer.empty[Double]).toMap
     var t = 0
     while (t < cfg.stepsPerEpoch) {
@@ -76,8 +80,7 @@ object Calibrate {
       name -> Metrics(arrival = arr, peakI = pk, finalI = fin)
     }
   }
-
-  // Evaluate loss surface over (beta, travelScale)
+  
   def gridSurface(
                    hp: HyperParams,
                    cfg: TrainConfig,
@@ -87,7 +90,7 @@ object Calibrate {
                    betaGrid: Seq[Double],
                    travelScales: Seq[Double],
                    validate: Boolean = true,
-                   heterogeneous: Boolean = true 
+                   heterogeneous: Boolean = true
                  ): (Seq[(Double, Double, Double)], (Double, (Double, Double))) = {
     val countries = ToyConn.C.map(_.name)
     var bestLoss = Double.MaxValue

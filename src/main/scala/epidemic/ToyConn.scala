@@ -54,14 +54,12 @@ object ToyConn {
     A
   }
   val W2: Array[Array[Double]] = scaleEdge(W, src = 5 /* China idx */, dst = 3 /* India idx */, factor = 3.0)
-
-  // Utility: scale a specific source row (e.g., to simulate travel policy at a hub)
+  
   def scaleRow(W: Array[Array[Double]], row: Int, factor: Double): Array[Array[Double]] = {
     val A = W.map(_.clone())
     val n = A.length
     var s = 0.0
     for j <- 0 until n do if (j != row) { A(row)(j) *= factor; s += A(row)(j) }
-    // re-cap if we exceed 1.0
     val cap = math.min(0.2, s)
     if (s > cap && s > 0) {
       val sc = cap / s

@@ -28,8 +28,7 @@ final class DDQNAgent(hp: HyperParams, stateSize: Int, actionSize: Int) {
     if (rnd.nextDouble() < eps) rnd.nextInt(actionSize)
     else online.predict(s.features, clamp = hp.clipQ).zipWithIndex.maxBy(_._1)._2
   }
-
-  // Default act uses the schedule and counts a step
+  
   def act(s: State): Int = actWithEpsilon(s, epsilon, countStep = true)
 
   def observe(tr: Transition): Unit = replay.push(tr)
@@ -56,16 +55,15 @@ final class DDQNAgent(hp: HyperParams, stateSize: Int, actionSize: Int) {
     val xs    = micros.map(_.s.features)
     val tgts  = micros.map(ddqnTarget)
     val loss  = online.trainBatch(xs, tgts, hp.gradClip, clamp = hp.clipQ)
-
-    hp.softTau match {
-      case Some(tau) => target.copyFrom(online)            
-      case None      => if (steps % hp.targetUpdateEvery == 0) target.copyFrom(online)
+    
+    if (steps % hp.targetUpdateEvery == 0) {
+      target.copyFrom(online)
     }
+
     emaLoss = if (emaLoss == 0.0) loss else hp.emaAlpha * loss + (1 - hp.emaAlpha) * emaLoss
     loss
   }
-
-  // Expose telemetry for logging and gating
+  
   def epsilonNow: Double = epsilon
   def emaLossNow: Double = emaLoss
   def replaySize: Int = replay.size

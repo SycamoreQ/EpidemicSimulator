@@ -9,7 +9,6 @@ final class MLP(val in: Int, val h: Int, val out: Int, val lr: Double) {
   var W3 = rand(out, h);var b3 = Array.fill(out)(0.0)
 
   private def relu(x: Double) = if (x > 0) x else 0.0
-  private def drelu(x: Double) = if (x > 0) 1.0 else 0.0
   private def matVec(W: Array[Array[Double]], x: Array[Double]) =
     W.map(row => row.view.zip(x).map { case (w, xi) => w * xi }.sum)
 
@@ -26,8 +25,7 @@ final class MLP(val in: Int, val h: Int, val out: Int, val lr: Double) {
     if (c.isFinite) for (i <- a.indices; j <- a(i).indices) a(i)(j) = math.max(-c, math.min(c, a(i)(j)))
   private def clipInPlace(a: Array[Double], c: Double): Unit =
     if (c.isFinite) for (i <- a.indices) a(i) = math.max(-c, math.min(c, a(i)))
-
-  // Accumulate grads over a micro-batch, then apply one update
+  
   def trainBatch(xs: Array[Array[Double]], tgts: Array[Array[Double]], gradClip: Double, clamp: Double): Double = {
     val n = xs.length
     val gW1 = Array.fill(h, in)(0.0); val gb1 = Array.fill(h)(0.0)
@@ -51,11 +49,11 @@ final class MLP(val in: Int, val h: Int, val out: Int, val lr: Double) {
       val dW3 = Array.tabulate(out, h)((i,j) => err(i) * h2(j))
       val db3 = err.clone()
       val dh2 = Array.tabulate(h)(j => (0 until out).map(i => W3(i)(j) * err(i)).sum)
-      val dz2 = dh2.zip(z2).map { case (g, z) => g * drelu(z) }
+      val dz2 = dh2.zip(z2).map { case (g, z) => g * relu(z) }
       val dW2 = Array.tabulate(h, h)((i,j) => dz2(i) * h1(j))
       val db2 = dz2.clone()
       val dh1 = Array.tabulate(h)(j => (0 until h).map(i => W2(i)(j) * dz2(i)).sum)
-      val dz1 = dh1.zip(z1).map { case (g, z) => g * drelu(z) }
+      val dz1 = dh1.zip(z1).map { case (g, z) => g * relu(z) }
       val dW1 = Array.tabulate(h, in)((i,j) => dz1(i) * x0(j))
       val db1 = dz1.clone()
 
