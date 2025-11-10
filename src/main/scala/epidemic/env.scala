@@ -132,7 +132,7 @@ final class EpidemicEnv(
       d = dN.toDouble, v = vN.toDouble, hospCap = cap, t = st.t + 1
     )
 
-    // EXTREME heterogeneous reward calculation
+    // extreme heterogeneous reward calculation
     val reward = calculateExtremeHeterogeneousReward(st, next, act)
     val done = (next.t >= next.tMax) || (next.i / math.max(1.0, next.n) < 1e-5) || (next.d / math.max(1.0, next.n) > 0.02)
 
@@ -155,7 +155,7 @@ final class EpidemicEnv(
     }
     val economicWeight = 1.0 - healthWeight
 
-    // EXTREME scaling factors
+    // extreme scaling factors
     val extremeGDPFactor = profile.gdpPerCapita match {
       case x if x > 50000 => 0.3    // Rich countries: much lower penalties
       case x if x > 20000 => 1.0    // Middle income: normal
@@ -198,7 +198,7 @@ final class EpidemicEnv(
       case Action.NoneA => 0.0
       case Action.Distancing => 0.05
       case Action.TravelBan => 0.08
-      case Action.Lockdown => 0.15   // Much higher lockdown cost
+      case Action.Lockdown => 0.15   
       case Action.NormalCare => 0.01
       case Action.SurgeCare => 0.06
       case Action.TargetedVax => 0.03
@@ -220,7 +220,7 @@ final class EpidemicEnv(
       case _ => 1.0
     }
 
-    baseActionCost * extremeEconomicMultiplier * extremeMobilityMultiplier * 30.0  // Much higher scaling
+    baseActionCost * extremeEconomicMultiplier * extremeMobilityMultiplier * 30.0  
   }
   
 

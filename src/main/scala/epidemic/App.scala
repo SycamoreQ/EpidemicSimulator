@@ -3,16 +3,19 @@ package epidemic
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
 import scala.util.Try
+import scala.collection.parallel.CollectionConverters._
 
 @main def main(): Unit = {
   val spark = SparkSession.builder()
-    .appName("Epidemic-DDQN-Scala3-Clean")
+    .appName("Epidemic-DDQN-Scala3-ParallelData")
     .master("local[*]")
     .config("spark.sql.shuffle.partitions", "8")
     .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
     .config("spark.network.timeout", "600s")
     .config("spark.dynamicAllocation.enabled", "false")
     .config("spark.ui.showConsoleProgress", "false")
+    .config("spark.sql.adaptive.enabled", "true")
+    .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
     .getOrCreate()
 
   spark.sparkContext.setLogLevel("WARN")
@@ -23,38 +26,72 @@ import scala.util.Try
     s = 1_000_000, i = 0, r = 0, d = 0, v = 0,
     hospCap = 10_000, t = 0, tMax = cfg.stepsPerEpoch, seed = 1
   )
-  
+
+  // parallelized OWID dataloader
   val owidCsv = sys.env.getOrElse("OWID_CSV", "data/owid-covid-data.csv")
-  val toy2owid = Map("China" -> "China", "Japan" -> "Japan", "India" -> "India", "Germany" -> "Germany", "Italy" -> "Italy", "USA" -> "United States")
+  val toy2owid = Map("China" -> "China", "Japan" -> "Japan", "India" -> "India",
+    "Germany" -> "Germany", "Italy" -> "Italy", "USA" -> "United States")
   val evalHorizon = cfg.stepsPerEpoch
 
-  def buildISeriesFromOWID(path: String, tMax: Int): Map[String, Seq[Double]] = {
+  def buildISeriesFromOWIDParallel(path: String, tMax: Int): Map[String, Seq[Double]] = {
     import spark.implicits._
-    val df = spark.read.option("header", "true").option("inferSchema", "true").csv(path)
-      .select($"location", $"date", $"new_cases".cast("double").as("new_cases"))
-      .withColumn("new_cases", coalesce(when(col("new_cases") < 0.0, 0.0).otherwise(col("new_cases")), lit(0.0)))
-      .filter(col("location").isin(toy2owid.values.toSeq: _*))
 
-    val rows = df.groupBy("location").agg(sort_array(collect_list(struct(col("date"), col("new_cases")))).as("xs")).collect()
-    rows.map { r =>
-      val owidName = r.getAs[String]("location")
-      val xs = r.getAs[Seq[Row]]("xs")
-      val ser = xs.map(rr => rr.getAs[Double]("new_cases")).take(tMax)
-      val padded = if (ser.size < tMax) ser ++ Seq.fill(tMax - ser.size)(0.0) else ser
-      val toyName = toy2owid.find(_._2 == owidName).map(_._1).getOrElse(owidName)
-      toyName -> padded
-    }.toMap
+    println("=== PARALLEL OWID DATA LOADING ===")
+    val startTime = System.currentTimeMillis()
+
+    // step 1: Load and partition CSV
+    val rawDf = spark.read
+      .option("header", "true")
+      .option("inferSchema", "true")
+      .csv(path)
+      .repartition(6, col("location"))  // 6 partitions for 6 countries
+      .cache()
+
+    println(s"Loaded OWID CSV across ${rawDf.rdd.getNumPartitions} partitions")
+
+    // step 2: Process each country in parallel - FIXED TYPE CONVERSION
+    val countryResults = toy2owid.toSeq.par.map { case (toyCountry, owidCountry) =>
+      println(s"Processing $toyCountry ($owidCountry) on parallel worker")
+
+      val countryDf = rawDf
+        .filter(col("location") === owidCountry)
+        .select($"date", $"new_cases".cast("double").as("new_cases"))
+        .withColumn("new_cases", coalesce(when(col("new_cases") < 0.0, 0.0).otherwise(col("new_cases")), lit(0.0)))
+        .orderBy("date")
+
+      val timeSeries = countryDf.select("new_cases").collect().map(_.getAs[Double]("new_cases")).toSeq.take(tMax)
+      val paddedSeries = if (timeSeries.size < tMax) {
+        timeSeries ++ Seq.fill(tMax - timeSeries.size)(0.0)
+      } else {
+        timeSeries
+      }
+
+      toyCountry -> paddedSeries
+    }.seq.toMap
+
+    rawDf.unpersist()
+    val endTime = System.currentTimeMillis()
+    println(f"Parallel OWID loading completed in ${(endTime - startTime) / 1000.0}%.2f seconds")
+    println("=====================================")
+
+    countryResults
   }
 
   import Calibrate.*
   import Validation.*
 
-  val iByCountryOpt = Try(buildISeriesFromOWID(owidCsv, evalHorizon)).toOption
-  val observedTargetsOpt: Option[Targets] = iByCountryOpt.map { m =>
-    Targets(
-      tArrive = m.view.mapValues(ser => arrivalTime(ser, 10.0).toDouble).toMap,
-      peakI = m.view.mapValues(ser => peakI(ser)).toMap
-    )
+  // Use parallel data loading
+  val iByCountryOpt = Try(buildISeriesFromOWIDParallel(owidCsv, evalHorizon)).toOption
+
+  val observedTargetsOpt: Option[Targets] = iByCountryOpt.map { countryData =>
+    val tArriveMap = countryData.map { case (country, series) =>
+      country -> arrivalTime(series, 10.0).toDouble
+    }
+    val peakIMap = countryData.map { case (country, series) =>
+      country -> peakI(series)
+    }
+
+    Targets(tArrive = tArriveMap, peakI = peakIMap)
   }
 
   val betaGrid = (24 to 27).map(_ / 100.0)
@@ -70,23 +107,12 @@ import scala.util.Try
     gridSurface(hp, cfgShort, base.copy(tMax = 300), seedIdx = 0, tgt, betaGrid, travelScales, validate = true)
 
   println(f"[surface] best loss=$bestLoss%.4f beta=$bestBeta%.3f")
-  
-  val betaMul = Map(
-    "China" -> 1.00, "Japan" -> 0.75, "India" -> 1.50,
-    "Germany" -> 0.80, "Italy" -> 1.20, "USA" -> 1.10
-  )
 
-  val ifrMul = Map(
-    "China" -> 0.90, "Japan" -> 1.40, "India" -> 1.30,
-    "Germany" -> 0.70, "Italy" -> 1.60, "USA" -> 1.00
-  )
+  // enhanced heterogeneity
+  val betaMul = Map("China" -> 1.00, "Japan" -> 0.75, "India" -> 1.50, "Germany" -> 0.80, "Italy" -> 1.20, "USA" -> 1.10)
+  val ifrMul = Map("China" -> 0.90, "Japan" -> 1.40, "India" -> 1.30, "Germany" -> 0.70, "Italy" -> 1.60, "USA" -> 1.00)
+  val noiseMul = Map("China" -> 0.8, "Japan" -> 0.9, "India" -> 1.3, "Germany" -> 0.7, "Italy" -> 1.1, "USA" -> 1.2)
 
-  val noiseMul = Map(
-    "China" -> 0.8, "Japan" -> 0.9, "India" -> 1.3,
-    "Germany" -> 0.7, "Italy" -> 1.1, "USA" -> 1.2
-  )
-
-  // Enhanced environment factory with moderate heterogeneity
   val makeEnvFor: (String, Int) => EpidemicEnv = { (name, pop) =>
     val profile = Geo.CountryProfiles.getProfile(name)
 
@@ -106,27 +132,31 @@ import scala.util.Try
       baseGamma = 0.12,
       baseIFR = finalIFR,
       noise = finalNoise,
-      rewardClip = hp.rewardClip * 1.5,  // Moderate reward range expansion
+      rewardClip = hp.rewardClip,
       countryName = name
     )
   }
 
-  // ---------- MINIMAL W&B Configuration ----------
+  // wandb init
   WandB.init(
     entity = sys.env.getOrElse("WANDB_ENTITY", "kaushik-80405-amrita-vishwa-vidyapeetham"),
     project = sys.env.getOrElse("WANDB_PROJECT", "epidemic-ddqn"),
-    name = s"clean-hetero-${System.currentTimeMillis()}",
+    name = s"parallel-data-${System.currentTimeMillis()}",
     config = Map(
       "epochs" -> cfg.epochs,
       "steps_per_epoch" -> cfg.stepsPerEpoch,
-      "heterogeneity" -> true,
+      "parallel_data_loading" -> true,
+      "heterogeneity_enabled" -> true
     )
   )
 
-
-  observedTargetsOpt.foreach { t =>
-    t.tArrive.foreach { case (c, v) => WandB.log(Map(s"obs_arrival_$c" -> v)) }
-    t.peakI.foreach { case (c, v) => WandB.log(Map(s"obs_peakI_$c" -> v)) }
+  observedTargetsOpt.foreach { targets =>
+    targets.tArrive.foreach { case (c, v) =>
+      WandB.log(Map(s"obs_arrival_$c" -> v))
+    }
+    targets.peakI.foreach { case (c, v) =>
+      WandB.log(Map(s"obs_peakI_$c" -> v))
+    }
   }
 
   val world = new WorldToy(
@@ -141,18 +171,38 @@ import scala.util.Try
     parallelism = Runtime.getRuntime.availableProcessors()
   )
 
-  println("=== CLEAN HETEROGENEITY SETUP ===")
+  println("=== PARALLEL PIPELINE VERIFICATION ===")
+  println(f"Using ${Runtime.getRuntime.availableProcessors()} CPU cores for data processing")
+  println(f"Spark partitions: ${spark.conf.get("spark.sql.shuffle.partitions")}")
   world.nodes.foreach { node =>
-    println(s"${node.name}: Environment configured with heterogeneity")
+    println(s"${node.name}: Environment ready with parallel-loaded data")
   }
-  println("=================================")
+  println("======================================")
 
   val trainer = new MultiTrainerToy(spark, hp, cfg, world, WandB)
   val df = trainer.run()
 
-  df.write.mode("overwrite").parquet("toy_results_clean_heterogeneous.parquet")
-  df.coalesce(1).write.mode("overwrite").option("header", "true").csv("toy_results_clean_heterogeneous_csv")
+  // writing results
+  println("Writing results in parallel...")
 
+  import scala.concurrent.Future
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  val parquetFuture = Future {
+    df.write.mode("overwrite").parquet("toy_results_parallel.parquet")
+    println("Parquet file written")
+  }
+
+  val csvFuture = Future {
+    df.coalesce(1).write.mode("overwrite").option("header", "true").csv("toy_results_parallel_csv")
+    println("CSV file written")
+  }
+
+  import scala.concurrent.duration._
+  scala.concurrent.Await.ready(parquetFuture, 30.seconds)
+  scala.concurrent.Await.ready(csvFuture, 30.seconds)
+
+  println("All results saved in parallel!")
   WandB.finish()
   spark.stop()
 }

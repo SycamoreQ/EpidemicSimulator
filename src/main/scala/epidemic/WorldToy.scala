@@ -37,16 +37,15 @@ final class WorldToy(
                          pop: Int,
                          env: EpidemicEnv,
                          agent: DDQNAgent,
-                         hyperParams: HyperParams,  // NEW: Store country-specific hyperparams
+                         hyperParams: HyperParams,  
                          var s: State,
                          var lastA: Int = 0,
-                         var lastLearnStep: Long = 0L  // NEW: Track when this country last learned
+                         var lastLearnStep: Long = 0L  
                        )
 
   val nodes: Vector[Node] = ToyConn.C.zipWithIndex.map { case (cfg, i) =>
     val env = makeEnvFor.map(f => f(cfg.name, cfg.pop)).getOrElse(makeEnv())
-
-    // Use country-specific hyperparameters - FIXED
+    
     val countryHp = countryHyperParams.getOrElse(cfg.name, hp)
     val agent = new DDQNAgent(countryHp, stateSize = 7, actionSize = Action.values.length)
     val s0 = initStates(i)
@@ -103,8 +102,7 @@ final class WorldToy(
 
     val totalAfterLocal: Long =
       if (validate) local.view.map(_._1).map(sumState).sum else 0L
-
-    // Mobility with integer-conserving exports along conn weights
+    
     val movedS = Array.fill(nodes.size)(0)
     val movedI = Array.fill(nodes.size)(0)
     var i = 0
@@ -148,7 +146,7 @@ final class WorldToy(
 
     gStep += 1
 
-    // ASYNCHRONOUS LEARNING: Each country learns on its own schedule
+    // async learning : Each country learns on its own schedule
     nodes.foreach { n =>
       val countryLearnEvery = n.hyperParams.learnEvery
       val stepsSinceLastLearn = gStep - n.lastLearnStep
@@ -170,8 +168,7 @@ final class WorldToy(
 
     out.result()
   }
-
-  // Greedy evaluation step
+  
   def stepOneGreedy(tMax: Int): Vector[(String, State, Double)] = {
     val local = Array.ofDim[(State, Double, Boolean)](nodes.size)
     val work = if (parallelism > 1) parNodes else nodes
